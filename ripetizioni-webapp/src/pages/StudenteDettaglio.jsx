@@ -3,9 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { formatEuro, formatDate, formatDuration } from "../utils/helpers";
 import LessonModal from "../components/LessonModal";
+import ExportReportModal from "../components/ExportReportModal";
 import {
   ArrowLeft, CheckCircle, AlertCircle, Pencil, Trash2,
-  Coins, Plus, TrendingUp, Clock
+  Coins, Plus, TrendingUp, Clock, FileDown
 } from "lucide-react";
 
 function CreditoModal({ student, onClose, onSave }) {
@@ -60,6 +61,7 @@ export default function StudenteDettaglio() {
 
   const [lessonModal, setLessonModal] = useState(null);
   const [creditoModal, setCreditoModal] = useState(false);
+  const [exportModal, setExportModal] = useState(false);
 
   if (!student) return (
     <div style={{ textAlign: "center", padding: "var(--space-12)", color: "var(--color-text-muted)" }}>
@@ -91,7 +93,7 @@ export default function StudenteDettaglio() {
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
 
       {/* Back + header */}
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap" }}>
         <button className="btn btn-ghost btn-icon" onClick={() => navigate("/studenti")}>
           <ArrowLeft size={18} />
         </button>
@@ -111,6 +113,14 @@ export default function StudenteDettaglio() {
             </p>
           </div>
         </div>
+        <button
+          className="btn btn-secondary"
+          style={{ marginLeft: "auto" }}
+          onClick={() => setExportModal(true)}
+          disabled={studentLessons.length === 0}
+        >
+          <FileDown size={15} /> Esporta PDF
+        </button>
       </div>
 
       {/* Stat cards */}
@@ -236,6 +246,13 @@ export default function StudenteDettaglio() {
           student={student}
           onClose={() => setCreditoModal(false)}
           onSave={async (val) => { await updateCredito(id, val); setCreditoModal(false); }}
+        />
+      )}
+      {exportModal && (
+        <ExportReportModal
+          student={student}
+          lessons={lessons}
+          onClose={() => setExportModal(false)}
         />
       )}
     </div>

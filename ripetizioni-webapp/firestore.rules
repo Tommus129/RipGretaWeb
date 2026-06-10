@@ -1,0 +1,13 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // L'app è a uso esclusivo di Greta (account autenticato).
+    // Tutte le letture/scritture richiedono un utente loggato.
+    // Gli accessi anonimi sono bloccati: i dati non sono più pubblici.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
