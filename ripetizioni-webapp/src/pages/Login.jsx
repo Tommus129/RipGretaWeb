@@ -14,7 +14,7 @@ export default function Login() {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
+    } catch {
       setError("Email o password errati. Riprova.");
     } finally {
       setLoading(false);

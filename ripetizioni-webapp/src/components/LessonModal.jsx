@@ -15,20 +15,17 @@ function toTimePart(dateOrTimestamp) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const DURATA_OPTIONS = [
-  { label: "15 min", value: 0.25 },
-  { label: "20 min", value: 0.333 },
-  { label: "30 min", value: 0.5 },
-  { label: "40 min", value: 0.667 },
-  { label: "45 min", value: 0.75 },
-  { label: "1 ora", value: 1 },
-  { label: "1h 15min", value: 1.25 },
-  { label: "1h 30min", value: 1.5 },
-  { label: "1h 45min", value: 1.75 },
-  { label: "2 ore", value: 2 },
-  { label: "2h 30min", value: 2.5 },
-  { label: "3 ore", value: 3 },
-];
+// Preset rapidi (in minuti)
+const PRESET_MIN = [15, 30, 60, 90, 120, 150, 180, 210, 240, 300];
+
+// Formatta una durata in minuti come testo leggibile
+function fmtMinuti(m) {
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (r === 0) return h === 1 ? "1 ora" : `${h} ore`;
+  return `${h}h ${r}min`;
+}
 
 export default function LessonModal({ onClose, onSave, initial, defaultStudentId }) {
   const { students } = useApp();
@@ -36,13 +33,15 @@ export default function LessonModal({ onClose, onSave, initial, defaultStudentId
   const [studentId, setStudentId] = useState(initial?.studentId ?? defaultStudentId ?? "");
   const [datePart, setDatePart] = useState(initial?.date ? toDatePart(initial.date) : toDatePart(new Date()));
   const [timePart, setTimePart] = useState(initial?.date ? toTimePart(initial.date) : "15:00");
-  const [duration, setDuration] = useState(initial?.duration ?? 1);
+  // Durata gestita in minuti per lo slider; nel modello dati è in ore.
+  const [durationMin, setDurationMin] = useState(initial?.duration ? Math.round(initial.duration * 60) : 60);
   const [rate, setRate] = useState(initial?.rate ?? 20);
   const [paid, setPaid] = useState(initial?.paid ?? false);
   const [note, setNote] = useState(initial?.note ?? "");
   const [extraCredit, setExtraCredit] = useState(initial?.extraCredit ?? 0);
 
-  const total = (parseFloat(duration) || 0) * (parseFloat(rate) || 0);
+  const durationHours = durationMin / 60;
+  const total = durationHours * (parseFloat(rate) || 0);
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -55,7 +54,7 @@ export default function LessonModal({ onClose, onSave, initial, defaultStudentId
       studentId,
       studentName: student ? `${student.nome} ${student.cognome}` : "",
       date: combined,
-      duration: parseFloat(duration),
+      duration: durationHours,
       rate: parseFloat(rate),
       paid,
       note: note.trim(),
@@ -86,53 +85,59 @@ export default function LessonModal({ onClose, onSave, initial, defaultStudentId
             </select>
           </div>
 
-          {/* Data e Ora separati */}
+          {/* Data e Ora */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-3)" }}>
             <div className="form-group">
               <label className="label">Data</label>
-              <input
-                className="input"
-                type="date"
-                value={datePart}
-                onChange={(e) => setDatePart(e.target.value)}
-                required
-              />
+              <input className="input" type="date" value={datePart} onChange={(e) => setDatePart(e.target.value)} required />
             </div>
             <div className="form-group">
               <label className="label">Ora inizio</label>
-              <input
-                className="input"
-                type="time"
-                value={timePart}
-                onChange={(e) => setTimePart(e.target.value)}
-                step="300"
-              />
+              <input className="input" type="time" value={timePart} onChange={(e) => setTimePart(e.target.value)} step="300" />
             </div>
           </div>
 
-          {/* Durata — bottoni rapidi */}
+          {/* Durata — slider */}
           <div className="form-group">
             <label className="label">Durata</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
-              {DURATA_OPTIONS.map((opt) => (
+            <div style={{ textAlign: "center", margin: "var(--space-2) 0 var(--space-3)" }}>
+              <span style={{ fontSize: "var(--text-xl)", fontWeight: 800, color: "var(--color-primary)", letterSpacing: "-0.02em" }}>
+                {fmtMinuti(durationMin)}
+              </span>
+              <span style={{ display: "block", fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: "var(--space-1)" }}>
+                {durationMin} minuti
+              </span>
+            </div>
+            <style>{`
+              .duration-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: var(--radius-full); background: var(--color-primary-light); outline: none; }
+              .duration-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+              .duration-slider::-moz-range-thumb { width: 22px; height: 22px; border: none; border-radius: 50%; background: var(--color-primary); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+            `}</style>
+            <input
+              type="range"
+              className="duration-slider"
+              min={5} max={300} step={5}
+              value={durationMin}
+              onChange={(e) => setDurationMin(Number(e.target.value))}
+            />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", marginTop: "var(--space-3)", justifyContent: "center" }}>
+              {PRESET_MIN.map((m) => (
                 <button
-                  key={opt.value}
+                  key={m}
                   type="button"
-                  onClick={() => setDuration(opt.value)}
+                  onClick={() => setDurationMin(m)}
                   style={{
                     padding: "var(--space-1) var(--space-3)",
                     borderRadius: "var(--radius-full)",
-                    fontSize: "var(--text-xs)",
-                    fontWeight: 600,
+                    fontSize: "var(--text-xs)", fontWeight: 600,
                     border: "1.5px solid",
-                    cursor: "pointer",
-                    transition: "all var(--transition)",
-                    borderColor: duration === opt.value ? "var(--color-primary)" : "var(--color-border)",
-                    background: duration === opt.value ? "var(--color-primary)" : "transparent",
-                    color: duration === opt.value ? "#fff" : "var(--color-text-muted)",
+                    cursor: "pointer", transition: "all var(--transition)",
+                    borderColor: durationMin === m ? "var(--color-primary)" : "var(--color-border)",
+                    background: durationMin === m ? "var(--color-primary)" : "transparent",
+                    color: durationMin === m ? "#fff" : "var(--color-text-muted)",
                   }}
                 >
-                  {opt.label}
+                  {m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}`}
                 </button>
               ))}
             </div>
@@ -141,27 +146,17 @@ export default function LessonModal({ onClose, onSave, initial, defaultStudentId
           {/* Tariffa */}
           <div className="form-group">
             <label className="label">Tariffa (€/ora)</label>
-            <input
-              className="input"
-              type="number"
-              step="0.5"
-              min="1"
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              required
-            />
+            <input className="input" type="number" inputMode="decimal" step="0.5" min="1" value={rate} onChange={(e) => setRate(e.target.value)} required />
           </div>
 
-          {/* Totale calcolato */}
+          {/* Totale */}
           <div style={{
-            background: "var(--color-primary-pale)",
-            border: "1px solid var(--color-primary-light)",
-            borderRadius: "var(--radius-md)",
-            padding: "var(--space-3) var(--space-4)",
+            background: "var(--color-primary-pale)", border: "1.5px solid var(--color-primary-light)",
+            borderRadius: "var(--radius-md)", padding: "var(--space-3) var(--space-4)",
             display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
-            <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>Totale lezione</span>
-            <span style={{ fontWeight: 700, fontSize: "var(--text-lg)", color: "var(--color-primary)" }}>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", fontWeight: 600 }}>Totale lezione</span>
+            <span style={{ fontWeight: 800, fontSize: "var(--text-lg)", color: "var(--color-primary)" }}>
               €{total.toFixed(2)}
             </span>
           </div>
@@ -169,14 +164,7 @@ export default function LessonModal({ onClose, onSave, initial, defaultStudentId
           {/* Extra credito */}
           <div className="form-group">
             <label className="label">Extra credito (€)</label>
-            <input
-              className="input"
-              type="number"
-              step="0.01"
-              min="0"
-              value={extraCredit}
-              onChange={(e) => setExtraCredit(e.target.value)}
-            />
+            <input className="input" type="number" step="0.01" min="0" value={extraCredit} onChange={(e) => setExtraCredit(e.target.value)} />
             <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
               Importo aggiuntivo pagato (es. anticipo)
             </span>
@@ -185,24 +173,12 @@ export default function LessonModal({ onClose, onSave, initial, defaultStudentId
           {/* Note */}
           <div className="form-group">
             <label className="label">Note (opzionale)</label>
-            <textarea
-              className="input"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Es. ripasso equazioni..."
-              style={{ resize: "vertical" }}
-            />
+            <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Es. ripasso equazioni..." style={{ resize: "vertical" }} />
           </div>
 
           {/* Pagato */}
           <label style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={paid}
-              onChange={(e) => setPaid(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "var(--color-primary)" }}
-            />
+            <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} style={{ width: 20, height: 20, accentColor: "var(--color-primary)" }} />
             <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Lezione già pagata</span>
           </label>
 

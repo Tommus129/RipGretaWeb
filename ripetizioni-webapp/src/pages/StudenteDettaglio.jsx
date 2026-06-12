@@ -1,13 +1,17 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
-import { formatEuro, formatDate, formatDuration } from "../utils/helpers";
+import { formatEuro, formatDate, formatDuration, getMonthName } from "../utils/helpers";
 import LessonModal from "../components/LessonModal";
 import ExportReportModal from "../components/ExportReportModal";
 import {
   ArrowLeft, CheckCircle, AlertCircle, Pencil, Trash2,
   Coins, Plus, TrendingUp, Clock, FileDown
 } from "lucide-react";
+
+function toDate(x) {
+  return x?.toDate ? x.toDate() : new Date(x);
+}
 
 function CreditoModal({ student, onClose, onSave }) {
   const [credito, setCredito] = useState(student.creditoResiduo ?? 0);
@@ -24,17 +28,11 @@ function CreditoModal({ student, onClose, onSave }) {
           </p>
           <div className="form-group">
             <label className="label">Credito residuo (€)</label>
-            <input
-              className="input" type="number" step="0.01" min="0"
-              value={credito} onChange={(e) => setCredito(e.target.value)}
-              autoFocus
-            />
+            <input className="input" type="number" step="0.01" min="0" value={credito} onChange={(e) => setCredito(e.target.value)} autoFocus />
           </div>
           <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "flex-end" }}>
             <button className="btn btn-ghost" onClick={onClose}>Annulla</button>
-            <button className="btn btn-primary" onClick={() => onSave(parseFloat(credito) || 0)}>
-              Salva
-            </button>
+            <button className="btn btn-primary" onClick={() => onSave(parseFloat(credito) || 0)}>Salva</button>
           </div>
         </div>
       </div>
@@ -51,13 +49,27 @@ export default function StudenteDettaglio() {
   const studentLessons = useMemo(() =>
     lessons
       .filter((l) => l.studentId === id)
-      .sort((a, b) => {
-        const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-        const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-        return db2 - da;
-      }),
+      .sort((a, b) => toDate(b.date) - toDate(a.date)),
     [lessons, id]
   );
+
+  // Raggruppamento per mese (i gruppi restano in ordine decrescente)
+  const gruppi = useMemo(() => {
+    const map = new Map();
+    for (const l of studentLessons) {
+      const d = toDate(l.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          label: `${getMonthName(d.getMonth())} ${d.getFullYear()}`.toUpperCase(),
+          lessons: [],
+        });
+      }
+      map.get(key).lessons.push(l);
+    }
+    return [...map.values()];
+  }, [studentLessons]);
 
   const [lessonModal, setLessonModal] = useState(null);
   const [creditoModal, setCreditoModal] = useState(false);
@@ -78,6 +90,13 @@ export default function StudenteDettaglio() {
   const oreTotal = studentLessons.reduce((s, l) => s + l.duration, 0);
   const credito = student.creditoResiduo ?? 0;
 
+  const statCards = [
+    { label: "Totale maturato", value: formatEuro(total), color: "var(--color-text)", icon: TrendingUp },
+    { label: "Incassato", value: formatEuro(incassato), color: "var(--color-success)", icon: CheckCircle },
+    { label: "Da incassare", value: formatEuro(daIncassare), color: "var(--color-error)", icon: AlertCircle },
+    { label: "Ore totali", value: formatDuration(oreTotal), color: "var(--color-secondary)", icon: Clock },
+  ];
+
   async function handleSave(data) {
     if (lessonModal?.id) await updateLesson(data);
     else await addLesson(data);
@@ -90,28 +109,28 @@ export default function StudenteDettaglio() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
 
-      {/* Back + header */}
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap" }}>
-        <button className="btn btn-ghost btn-icon" onClick={() => navigate("/studenti")}>
-          <ArrowLeft size={18} />
+      {/* Header studente */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+        <button className="btn btn-ghost btn-icon" onClick={() => navigate("/studenti")} style={{ width: 36, height: 36, flexShrink: 0 }}>
+          <ArrowLeft size={17} />
         </button>
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: "var(--radius-full)",
-            background: "var(--color-primary-light)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontWeight: 700, color: "var(--color-primary)", fontSize: "var(--text-lg)",
-          }}>
-            {student.nome[0]}{student.cognome[0]}
-          </div>
-          <div>
-            <h2 style={{ fontWeight: 700, fontSize: "var(--text-lg)" }}>{student.nome} {student.cognome}</h2>
-            <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-              {studentLessons.length} lezioni totali · {formatDuration(oreTotal)} di ripetizioni
-            </p>
-          </div>
+        <div style={{
+          width: 44, height: 44, borderRadius: "var(--radius-full)",
+          background: "var(--color-primary-light)", border: "2px solid var(--color-primary)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontWeight: 800, color: "var(--color-primary)", fontSize: "var(--text-sm)", flexShrink: 0,
+        }}>
+          {student.nome[0]}{student.cognome[0]}
+        </div>
+        <div>
+          <h2 style={{ fontWeight: 800, fontSize: "var(--text-base)", letterSpacing: "-0.01em" }}>
+            {student.nome} {student.cognome}
+          </h2>
+          <p style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", marginTop: 2 }}>
+            {studentLessons.length} lezioni · {formatDuration(oreTotal)} di ripetizioni
+          </p>
         </div>
         <button
           className="btn btn-secondary"
@@ -124,113 +143,130 @@ export default function StudenteDettaglio() {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "var(--space-3)" }}>
-        {[
-          { label: "Totale maturato", value: formatEuro(total), color: "var(--color-text)", icon: TrendingUp },
-          { label: "Incassato", value: formatEuro(incassato), color: "var(--color-success)", icon: CheckCircle },
-          { label: "Da incassare", value: formatEuro(daIncassare), color: "var(--color-error)", icon: AlertCircle },
-          { label: "Ore totali", value: formatDuration(oreTotal), color: "var(--color-secondary)", icon: Clock },
-        ].map(({ label, value, color, icon: Icon }) => (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: "var(--space-3)" }}>
+        {statCards.map(({ label, value, color, icon: Icon }) => (
           <div key={label} className="card" style={{ padding: "var(--space-4)" }}>
-            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "var(--space-2)" }}>
-              {label}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+              <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.35 }}>
+                {label}
+              </span>
+              <div style={{ width: 28, height: 28, flexShrink: 0, borderRadius: "var(--radius-sm)", background: color + "22", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon size={14} color={color} />
+              </div>
             </div>
-            <div style={{ fontSize: "var(--text-lg)", fontWeight: 700, color }}>{value}</div>
+            <div style={{ fontSize: "var(--text-base)", fontWeight: 800, color, lineHeight: 1.15, letterSpacing: "-0.01em" }}>{value}</div>
           </div>
         ))}
       </div>
 
-      {/* Sezione credito */}
+      {/* Credito residuo */}
       <div className="card" style={{
-        background: "var(--color-secondary-light)",
-        border: "1px solid #e8d5f0",
+        background: "var(--color-secondary-light)", border: "1.5px solid var(--color-secondary)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "var(--space-4) var(--space-6)", flexWrap: "wrap", gap: "var(--space-3)",
+        padding: "var(--space-4) var(--space-5)", flexWrap: "wrap", gap: "var(--space-3)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          <Coins size={22} color="var(--color-secondary)" />
+          <div style={{ width: 36, height: 36, borderRadius: "var(--radius-md)", background: "var(--color-secondary)22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Coins size={18} color="var(--color-secondary)" />
+          </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: "var(--text-base)" }}>Credito residuo</div>
+            <div style={{ fontWeight: 800, fontSize: "var(--text-sm)" }}>Credito residuo</div>
             <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
-              Importo già pagato in anticipo dallo studente
+              Importo pagato in anticipo dallo studente
             </div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)" }}>
-          <span style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--color-secondary)" }}>
-            {formatEuro(credito)}
-          </span>
+          <span style={{ fontSize: "var(--text-lg)", fontWeight: 800, color: "var(--color-secondary)" }}>{formatEuro(credito)}</span>
           <button className="btn btn-ghost btn-sm" onClick={() => setCreditoModal(true)}>
             <Pencil size={13} /> Modifica
           </button>
         </div>
       </div>
 
-      {/* Lista lezioni */}
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{
-          padding: "var(--space-4) var(--space-6)",
-          borderBottom: "1px solid var(--color-border)",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-        }}>
-          <h3 style={{ fontWeight: 700 }}>Lezioni</h3>
-          <button className="btn btn-primary btn-sm" onClick={() => setLessonModal({})}>
-            <Plus size={14} /> Aggiungi lezione
-          </button>
-        </div>
+      {/* Header lista + aggiungi */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--space-2)" }}>
+        <h3 style={{ fontWeight: 800, fontSize: "var(--text-base)" }}>Lezioni</h3>
+        <button className="btn btn-primary btn-sm" onClick={() => setLessonModal({})}>
+          <Plus size={14} /> Aggiungi lezione
+        </button>
+      </div>
 
-        {studentLessons.length === 0 ? (
-          <div style={{ padding: "var(--space-10)", textAlign: "center", color: "var(--color-text-muted)" }}>
-            <p style={{ fontWeight: 600 }}>Nessuna lezione ancora</p>
-          </div>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ background: "var(--color-surface-offset)" }}>
-                {["Data", "Durata", "Tariffa", "Totale", "Stato", ""].map((h) => (
-                  <th key={h} style={{
-                    padding: "var(--space-2) var(--space-4)", textAlign: "left",
-                    fontSize: "var(--text-xs)", fontWeight: 600,
-                    color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {studentLessons.map((l, i) => (
-                <tr key={l.id ?? i} style={{ borderTop: "1px solid var(--color-divider)" }}>
-                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)" }}>{formatDate(l.date)}</td>
-                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{formatDuration(l.duration)}</td>
-                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{l.rate}€/h</td>
-                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)", fontWeight: 700 }}>{formatEuro(l.duration * l.rate)}</td>
-                  <td style={{ padding: "var(--space-3) var(--space-4)" }}>
-                    <button
-                      onClick={() => togglePaid(l)}
-                      className={`badge ${l.paid ? "badge-paid" : "badge-unpaid"}`}
-                      style={{ cursor: "pointer", border: "none" }}
-                    >
-                      {l.paid
-                        ? <><CheckCircle size={10} style={{ marginRight: 3 }} />Pagata</>
-                        : <><AlertCircle size={10} style={{ marginRight: 3 }} />Non pagata</>
-                      }
-                    </button>
-                  </td>
-                  <td style={{ padding: "var(--space-3) var(--space-4)" }}>
-                    <div style={{ display: "flex", gap: "var(--space-1)" }}>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setLessonModal(l)} aria-label="Modifica">
-                        <Pencil size={13} />
+      {/* Lezioni raggruppate per mese */}
+      {studentLessons.length === 0 ? (
+        <div className="card" style={{ textAlign: "center", padding: "var(--space-10)", color: "var(--color-text-muted)" }}>
+          <p style={{ fontWeight: 700 }}>Nessuna lezione ancora</p>
+          <p style={{ fontSize: "var(--text-xs)", fontWeight: 500, marginTop: "var(--space-2)" }}>
+            Aggiungi la prima lezione con il pulsante qui sopra
+          </p>
+        </div>
+      ) : (
+        gruppi.map((g) => {
+          const tot = g.lessons.reduce((s, l) => s + l.duration * l.rate, 0);
+          const inc = g.lessons.filter((l) => l.paid).reduce((s, l) => s + l.duration * l.rate, 0);
+          return (
+            <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+              {/* Intestazione mese */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--space-2)", borderBottom: "1.5px solid var(--color-border)", paddingBottom: "var(--space-2)" }}>
+                <span style={{ fontSize: "var(--text-xs)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>{g.label}</span>
+                <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)" }}>
+                  {g.lessons.length} lezioni · {formatEuro(tot)}
+                  {inc < tot && (
+                    <span style={{ color: "var(--color-error)", marginLeft: "var(--space-2)", fontWeight: 700 }}>
+                      ({formatEuro(tot - inc)} da incassare)
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {/* Card lezione */}
+              {g.lessons.map((l) => (
+                <div
+                  key={l.id}
+                  className="card"
+                  style={{
+                    padding: "var(--space-4) var(--space-5)",
+                    display: "flex", flexDirection: "column", gap: "var(--space-2)",
+                    borderLeft: `3px solid ${l.paid ? "var(--color-success)" : "var(--color-error)"}`,
+                    transition: "box-shadow var(--transition)",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "var(--shadow-md)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "var(--shadow-sm)")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-2)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>{formatDate(l.date)}</div>
+                      <div style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-text-muted)", marginTop: 2 }}>
+                        {formatDuration(l.duration)} · {l.rate}€/h
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: "var(--text-sm)", letterSpacing: "-0.01em" }}>
+                      {formatEuro(l.duration * l.rate)}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                      <button
+                        onClick={() => togglePaid(l)}
+                        className={`badge ${l.paid ? "badge-paid" : "badge-unpaid"}`}
+                        style={{ cursor: "pointer", border: "none", fontSize: "var(--text-xs)", fontWeight: 700, padding: "var(--space-1) var(--space-2)" }}
+                      >
+                        {l.paid
+                          ? <><CheckCircle size={12} style={{ marginRight: 3 }} />Pagata</>
+                          : <><AlertCircle size={12} style={{ marginRight: 3 }} />Non pagata</>}
                       </button>
-                      <button className="btn btn-danger btn-icon btn-sm" onClick={() => handleDelete(l.id)} aria-label="Elimina">
+                      <button className="btn btn-ghost btn-icon" style={{ width: 32, height: 32 }} onClick={() => setLessonModal(l)} aria-label="Modifica" title="Modifica">
+                        <Pencil size={13} color="var(--color-text-muted)" />
+                      </button>
+                      <button className="btn btn-danger btn-icon" style={{ width: 32, height: 32 }} onClick={() => handleDelete(l.id)} aria-label="Elimina" title="Elimina">
                         <Trash2 size={13} />
                       </button>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </div>
+          );
+        })
+      )}
 
       {/* Modali */}
       {lessonModal !== null && (
