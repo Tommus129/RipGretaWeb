@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { formatEuro, formatDate, formatDuration } from "../utils/helpers";
-import { TrendingUp, Clock, BookOpen, AlertCircle, CheckCircle } from "lucide-react";
+import { TrendingUp, Clock, BookOpen, AlertCircle, CheckCircle, Plus } from "lucide-react";
+import LessonModal from "../components/LessonModal";
 
 function StatCard({ label, value, sub, color, icon: Icon }) {
   return (
@@ -28,8 +29,16 @@ function StatCard({ label, value, sub, color, icon: Icon }) {
 }
 
 export default function Dashboard() {
-  const { lessons, students, getWeeklyStats, getMonthlyStats, loading } = useApp();
+  const { lessons, students, getWeeklyStats, getMonthlyStats, addLesson, loading } = useApp();
   const navigate = useNavigate();
+
+  // Apertura modale "Aggiungi lezione": null = chiusa, {} = nuova lezione
+  const [lessonModal, setLessonModal] = useState(null);
+
+  async function handleSaveLesson(data) {
+    await addLesson(data);
+    setLessonModal(null);
+  }
 
   const now = new Date();
   const weekly = getWeeklyStats();
@@ -59,14 +68,24 @@ export default function Dashboard() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-8)" }}>
 
-      {/* ── Saluto ── */}
-      <div>
-        <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700 }}>
-          Ciao Greta! 👋
-        </h2>
-        <p style={{ color: "var(--color-text-muted)", marginTop: "var(--space-1)", fontSize: "var(--text-sm)" }}>
-          Ecco il riepilogo di oggi.
-        </p>
+      {/* ── Saluto + azione rapida ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "var(--space-4)", flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700 }}>
+            Ciao Greta! 👋
+          </h2>
+          <p style={{ color: "var(--color-text-muted)", marginTop: "var(--space-1)", fontSize: "var(--text-sm)" }}>
+            Ecco il riepilogo di oggi.
+          </p>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={() => setLessonModal({})}
+          disabled={students.length === 0}
+          title={students.length === 0 ? "Aggiungi prima uno studente" : "Aggiungi lezione"}
+        >
+          <Plus size={16} /> Aggiungi lezione
+        </button>
       </div>
 
       {/* ── Stat cards ── */}
@@ -208,6 +227,15 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* ── Modale nuova lezione ── */}
+      {lessonModal !== null && (
+        <LessonModal
+          onClose={() => setLessonModal(null)}
+          onSave={handleSaveLesson}
+          initial={null}
+        />
+      )}
 
     </div>
   );
