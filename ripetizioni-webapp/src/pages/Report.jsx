@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
-import { formatEuro, formatDuration, getMonthName } from "../utils/helpers";
-import { TrendingUp, TrendingDown, Clock, CheckCircle } from "lucide-react";
+import { formatEuro, formatDuration, getMonthName, formatDate, totaleValutazione } from "../utils/helpers";
+import { TrendingUp, TrendingDown, Clock, CheckCircle, ClipboardList } from "lucide-react";
 
 function BarChart({ data, max, color }) {
   return (
@@ -23,20 +23,21 @@ function BarChart({ data, max, color }) {
 }
 
 export default function Report() {
-  const { lessons, students } = useApp();
+  const { lessons, students, evaluations } = useApp();
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
 
   // Anni disponibili dai dati
   const years = useMemo(() => {
-    const set = new Set(lessons.map((l) => {
-      const d = l.date?.toDate ? l.date.toDate() : new Date(l.date);
+    const anno = (item) => {
+      const d = item.date?.toDate ? item.date.toDate() : new Date(item.date);
       return d.getFullYear();
-    }));
+    };
+    const set = new Set([...lessons.map(anno), ...evaluations.map(anno)]);
     set.add(now.getFullYear());
     return [...set].sort((a, b) => b - a);
-  }, [lessons]);
+  }, [lessons, evaluations]);
 
   // Stats mensile selezionato
   const monthLessons = useMemo(() =>
@@ -69,6 +70,29 @@ export default function Report() {
   );
 
   const maxMonthly = Math.max(...monthlyData.map((d) => d.value), 1);
+
+  // ── Valutazioni ──
+  const monthEvaluations = useMemo(() =>
+    evaluations.filter((e) => {
+      const d = e.date?.toDate ? e.date.toDate() : new Date(e.date);
+      return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+    }),
+    [evaluations, selectedMonth, selectedYear]
+  );
+
+  const totalValMese = monthEvaluations.reduce((s, e) => s + totaleValutazione(e), 0);
+  const incassatoValMese = monthEvaluations.filter((e) => e.paid).reduce((s, e) => s + totaleValutazione(e), 0);
+
+  const yearEvaluations = useMemo(() =>
+    evaluations.filter((e) => {
+      const d = e.date?.toDate ? e.date.toDate() : new Date(e.date);
+      return d.getFullYear() === selectedYear;
+    }),
+    [evaluations, selectedYear]
+  );
+
+  const totalValAnno = yearEvaluations.reduce((s, e) => s + totaleValutazione(e), 0);
+  const incassatoValAnno = yearEvaluations.filter((e) => e.paid).reduce((s, e) => s + totaleValutazione(e), 0);
 
   // Stats per studente nel mese
   const studentStats = useMemo(() =>
@@ -110,14 +134,25 @@ export default function Report() {
           📊 Andamento {selectedYear}
         </h3>
         <BarChart data={monthlyData} max={maxMonthly} color="var(--color-primary)" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)", marginTop: "var(--space-6)" }}>
+        <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", marginTop: "var(--space-3)" }}>
+          Il grafico mostra le sole ripetizioni.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "var(--space-4)", marginTop: "var(--space-6)" }}>
           <div style={{ padding: "var(--space-4)", background: "var(--color-primary-pale)", borderRadius: "var(--radius-md)" }}>
-            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", marginBottom: "var(--space-1)" }}>Totale anno</div>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", marginBottom: "var(--space-1)" }}>Ripetizioni anno</div>
             <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--color-primary)" }}>{formatEuro(totalAnno)}</div>
+          </div>
+          <div style={{ padding: "var(--space-4)", background: "var(--color-secondary-light)", borderRadius: "var(--radius-md)" }}>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", marginBottom: "var(--space-1)" }}>Valutazioni anno</div>
+            <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--color-secondary)" }}>{formatEuro(totalValAnno)}</div>
           </div>
           <div style={{ padding: "var(--space-4)", background: "var(--color-success-light)", borderRadius: "var(--radius-md)" }}>
             <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", marginBottom: "var(--space-1)" }}>Incassato anno</div>
-            <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--color-success)" }}>{formatEuro(incassatoAnno)}</div>
+            <div style={{ fontSize: "var(--text-xl)", fontWeight: 700, color: "var(--color-success)" }}>{formatEuro(incassatoAnno + incassatoValAnno)}</div>
+          </div>
+          <div style={{ padding: "var(--space-4)", background: "var(--color-surface-offset)", borderRadius: "var(--radius-md)" }}>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", marginBottom: "var(--space-1)" }}>Totale anno</div>
+            <div style={{ fontSize: "var(--text-xl)", fontWeight: 700 }}>{formatEuro(totalAnno + totalValAnno)}</div>
           </div>
         </div>
       </div>
@@ -133,6 +168,8 @@ export default function Report() {
             { label: "Incassato", value: formatEuro(incassatoMese), color: "var(--color-success)", icon: CheckCircle },
             { label: "Da incassare", value: formatEuro(daIncassareMese), color: "var(--color-error)", icon: TrendingDown },
             { label: "Ore lezioni", value: formatDuration(oreMese), color: "var(--color-secondary)", icon: Clock },
+            { label: "Valutazioni", value: formatEuro(totalValMese), color: "var(--color-primary)", icon: ClipboardList },
+            { label: "Totale mese", value: formatEuro(totalMese + totalValMese), color: "var(--color-primary)", icon: TrendingUp },
           ].map(({ label, value, color, icon: Icon }) => (
             <div key={label} className="card" style={{ padding: "var(--space-4)" }}>
               <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "var(--space-2)" }}>{label}</div>
@@ -175,6 +212,63 @@ export default function Report() {
           </table>
         </div>
       )}
+
+      {/* Valutazioni del mese */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{
+          padding: "var(--space-4) var(--space-6)",
+          borderBottom: "1px solid var(--color-border)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", flexWrap: "wrap",
+        }}>
+          <h3 style={{ fontWeight: 700 }}>Valutazioni — {getMonthName(selectedMonth)} {selectedYear}</h3>
+          <div style={{ display: "flex", gap: "var(--space-4)", fontSize: "var(--text-xs)" }}>
+            <span style={{ color: "var(--color-text-muted)" }}>
+              Totale <strong style={{ color: "var(--color-primary)" }}>{formatEuro(totalValMese)}</strong>
+            </span>
+            <span style={{ color: "var(--color-text-muted)" }}>
+              Incassato <strong style={{ color: "var(--color-success)" }}>{formatEuro(incassatoValMese)}</strong>
+            </span>
+          </div>
+        </div>
+
+        {monthEvaluations.length === 0 ? (
+          <div style={{ padding: "var(--space-8)", textAlign: "center", color: "var(--color-text-muted)" }}>
+            <ClipboardList size={30} style={{ margin: "0 auto var(--space-3)", opacity: 0.3 }} />
+            <p style={{ fontWeight: 600 }}>Nessuna valutazione in questo mese</p>
+          </div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "var(--color-surface-offset)" }}>
+                {["Persona", "Data", "Voci", "Totale", "Stato"].map((h) => (
+                  <th key={h} style={{
+                    padding: "var(--space-2) var(--space-4)", textAlign: "left",
+                    fontSize: "var(--text-xs)", fontWeight: 600,
+                    color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em",
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {monthEvaluations.map((e) => (
+                <tr key={e.id} style={{ borderTop: "1px solid var(--color-divider)" }}>
+                  <td style={{ padding: "var(--space-3) var(--space-4)", fontWeight: 600, fontSize: "var(--text-sm)" }}>{e.nome} {e.cognome}</td>
+                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>{formatDate(e.date)}</td>
+                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>
+                    {(e.voci ?? []).map((v) => v.nome).join(", ") || "—"}
+                  </td>
+                  <td style={{ padding: "var(--space-3) var(--space-4)", fontSize: "var(--text-sm)", fontWeight: 700 }}>{formatEuro(totaleValutazione(e))}</td>
+                  <td style={{ padding: "var(--space-3) var(--space-4)" }}>
+                    <span className={`badge ${e.paid ? "badge-paid" : "badge-unpaid"}`}>
+                      {e.paid ? "Pagata" : "Da pagare"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
     </div>
   );

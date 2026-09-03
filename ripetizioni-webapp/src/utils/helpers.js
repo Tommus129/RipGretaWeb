@@ -45,3 +45,8 @@ export function formatEuro(amount) {
   export function classNames(...classes) {
     return classes.filter(Boolean).join(" ");
   }
+
+/** Totale di una scheda valutazione: somma dei prezzi delle voci flaggate. */
+export function totaleValutazione(valutazione) {
+  return (valutazione?.voci ?? []).reduce((s, v) => s + (Number(v.prezzo) || 0), 0);
+}

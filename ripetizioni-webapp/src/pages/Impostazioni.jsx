@@ -1,7 +1,141 @@
+import { useState } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { THEMES } from "../theme/themes";
 import { useApp } from "../context/AppContext";
-import { LogOut } from "lucide-react";
+import { formatEuro } from "../utils/helpers";
+import { LogOut, Plus, Trash2, Check, X, Pencil } from "lucide-react";
+
+// Gestione dei tipi di valutazione: nome + prezzo. Sono le voci che si
+// possono flaggare quando si crea una scheda nella sezione Valutazioni.
+function TipiValutazione() {
+  const { evaluationTypes, addEvaluationType, updateEvaluationType, deleteEvaluationType } = useApp();
+
+  const [nuovoNome, setNuovoNome] = useState("");
+  const [nuovoPrezzo, setNuovoPrezzo] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editNome, setEditNome] = useState("");
+  const [editPrezzo, setEditPrezzo] = useState("");
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!nuovoNome.trim()) return;
+    await addEvaluationType({ nome: nuovoNome.trim(), prezzo: parseFloat(nuovoPrezzo) || 0 });
+    setNuovoNome("");
+    setNuovoPrezzo("");
+  }
+
+  function apriEdit(t) {
+    setEditId(t.id);
+    setEditNome(t.nome);
+    setEditPrezzo(String(t.prezzo ?? 0));
+  }
+
+  async function salvaEdit() {
+    if (!editNome.trim()) return;
+    await updateEvaluationType({ id: editId, nome: editNome.trim(), prezzo: parseFloat(editPrezzo) || 0 });
+    setEditId(null);
+  }
+
+  async function handleDelete(t) {
+    if (!confirm(`Elimina il tipo "${t.nome}"?\n\nLe schede già create non cambiano.`)) return;
+    await deleteEvaluationType(t.id);
+  }
+
+  return (
+    <div className="card" style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}>Tipi di valutazione</div>
+        <div style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>
+          Le voci che puoi flaggare in una scheda, con quanto ti vengono pagate
+        </div>
+      </div>
+
+      {/* Elenco tipi esistenti */}
+      {evaluationTypes.length === 0 ? (
+        <div style={{
+          padding: "var(--space-4)",
+          border: "1.5px dashed var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          textAlign: "center", color: "var(--color-text-muted)", fontSize: "var(--text-sm)",
+        }}>
+          Nessun tipo ancora. Aggiungine uno qui sotto.
+        </div>
+      ) : (
+        <div style={{ border: "1.5px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+          {evaluationTypes.map((t, i) => (
+            <div
+              key={t.id}
+              style={{
+                display: "flex", alignItems: "center", gap: "var(--space-2)",
+                padding: "var(--space-2) var(--space-3)",
+                borderTop: i === 0 ? "none" : "1px solid var(--color-divider)",
+              }}
+            >
+              {editId === t.id ? (
+                <>
+                  <input
+                    className="input" value={editNome}
+                    onChange={(e) => setEditNome(e.target.value)}
+                    style={{ flex: 1, minWidth: 0 }} aria-label="Nome tipo"
+                  />
+                  <input
+                    className="input" type="number" step="0.5" min="0" value={editPrezzo}
+                    onChange={(e) => setEditPrezzo(e.target.value)}
+                    style={{ width: 80, textAlign: "right" }} aria-label="Prezzo"
+                  />
+                  <button className="btn btn-primary btn-icon btn-sm" onClick={salvaEdit} aria-label="Salva">
+                    <Check size={14} />
+                  </button>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setEditId(null)} aria-label="Annulla">
+                    <X size={14} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: "var(--text-sm)", minWidth: 0 }}>
+                    {t.nome}
+                  </span>
+                  <span style={{ fontWeight: 700, fontSize: "var(--text-sm)", color: "var(--color-primary)" }}>
+                    {formatEuro(t.prezzo)}
+                  </span>
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => apriEdit(t)} aria-label="Modifica">
+                    <Pencil size={14} />
+                  </button>
+                  <button className="btn btn-danger btn-icon btn-sm" onClick={() => handleDelete(t)} aria-label="Elimina">
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Nuovo tipo */}
+      <form onSubmit={handleAdd} style={{ display: "flex", gap: "var(--space-2)", alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="form-group" style={{ flex: 1, minWidth: 140 }}>
+          <label className="label">Nome valutazione</label>
+          <input
+            className="input" value={nuovoNome}
+            onChange={(e) => setNuovoNome(e.target.value)}
+            placeholder="Es. Correzione tema"
+          />
+        </div>
+        <div className="form-group" style={{ width: 110 }}>
+          <label className="label">Prezzo €</label>
+          <input
+            className="input" type="number" step="0.5" min="0" value={nuovoPrezzo}
+            onChange={(e) => setNuovoPrezzo(e.target.value)}
+            placeholder="0"
+          />
+        </div>
+        <button type="submit" className="btn btn-primary" disabled={!nuovoNome.trim()}>
+          <Plus size={16} /> Aggiungi
+        </button>
+      </form>
+    </div>
+  );
+}
 
 export default function Impostazioni() {
   const { tema, dark, setTema, setDark } = useTheme();
@@ -14,9 +148,12 @@ export default function Impostazioni() {
       <div>
         <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700 }}>Impostazioni</h2>
         <p style={{ color: "var(--color-text-muted)", marginTop: "var(--space-1)", fontSize: "var(--text-sm)" }}>
-          Personalizza l'aspetto dell'app.
+          Configura le valutazioni e personalizza l'aspetto dell'app.
         </p>
       </div>
+
+      {/* Tipi di valutazione */}
+      <TipiValutazione />
 
       {/* Tema colore */}
       <div className="card" style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>

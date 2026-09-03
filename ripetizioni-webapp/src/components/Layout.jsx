@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Outlet, NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard, Users, BarChart2, Settings, Menu, GraduationCap, LogOut
+  LayoutDashboard, Users, ClipboardList, BarChart2, Settings, Menu, GraduationCap, LogOut
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 
 const navItems = [
   { to: "/dashboard",    label: "Dashboard",    icon: LayoutDashboard },
   { to: "/studenti",     label: "Studenti",     icon: Users },
+  { to: "/valutazioni",  label: "Valutazioni",  icon: ClipboardList },
   { to: "/report",       label: "Report",       icon: BarChart2 },
   { to: "/impostazioni", label: "Impostazioni", icon: Settings },
 ];
