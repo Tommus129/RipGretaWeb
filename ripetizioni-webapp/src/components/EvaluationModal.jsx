@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { Settings2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { vocePagata } from "../utils/helpers";
 
 function toDatePart(dateOrTimestamp) {
   if (!dateOrTimestamp) return "";
@@ -22,6 +23,7 @@ function vociIniziali(evaluationTypes, initial) {
       nome: t.nome,
       prezzo: String(salvata ? salvata.prezzo : (t.prezzo ?? 0)),
       checked: !!salvata,
+      paid: salvata ? vocePagata(initial, salvata) : false,
       rimossa: false,
     };
   });
@@ -36,6 +38,7 @@ function vociIniziali(evaluationTypes, initial) {
         nome: v.nome,
         prezzo: String(v.prezzo ?? 0),
         checked: true,
+        paid: vocePagata(initial, v),
         rimossa: true,
       });
     }
@@ -55,7 +58,15 @@ export default function EvaluationModal({ onClose, onSave, initial }) {
   );
   const [voci, setVoci] = useState(() => vociIniziali(evaluationTypes, initial));
   const [note, setNote] = useState(initial?.note ?? "");
-  const [paid, setPaid] = useState(initial?.paid ?? false);
+  // Stato pagamento per test: la casella "già pagata" li segna tutti insieme
+  const [paid, setPaid] = useState(
+    () => (initial?.voci ?? []).length > 0 && initial.voci.every((v) => vocePagata(initial, v))
+  );
+
+  function togglePaidTutti(valore) {
+    setPaid(valore);
+    setVoci((prev) => prev.map((v) => ({ ...v, paid: valore })));
+  }
 
   const totale = voci
     .filter((v) => v.checked)
@@ -76,9 +87,8 @@ export default function EvaluationModal({ onClose, onSave, initial }) {
       date: new Date(`${datePart}T12:00:00`),
       voci: voci
         .filter((v) => v.checked)
-        .map((v) => ({ typeId: v.typeId, nome: v.nome, prezzo: parseFloat(v.prezzo) || 0 })),
+        .map((v) => ({ typeId: v.typeId, nome: v.nome, prezzo: parseFloat(v.prezzo) || 0, paid: !!v.paid })),
       note: note.trim(),
-      paid,
     });
   }
 
@@ -228,7 +238,7 @@ export default function EvaluationModal({ onClose, onSave, initial }) {
           {/* Pagato */}
           <label style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", cursor: "pointer" }}>
             <input
-              type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)}
+              type="checkbox" checked={paid} onChange={(e) => togglePaidTutti(e.target.checked)}
               style={{ width: 20, height: 20, accentColor: "var(--color-primary)" }}
             />
             <span style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>Valutazione già pagata</span>

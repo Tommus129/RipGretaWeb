@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
-import { formatEuro, formatDuration, getMonthName, formatDate, totaleValutazione } from "../utils/helpers";
+import { formatEuro, formatDuration, getMonthName, formatDate, totaleValutazione, incassoValutazione } from "../utils/helpers";
 import { TrendingUp, TrendingDown, Clock, CheckCircle, ClipboardList } from "lucide-react";
 
 function BarChart({ data, max, color }) {
@@ -81,7 +81,7 @@ export default function Report() {
   );
 
   const totalValMese = monthEvaluations.reduce((s, e) => s + totaleValutazione(e), 0);
-  const incassatoValMese = monthEvaluations.filter((e) => e.paid).reduce((s, e) => s + totaleValutazione(e), 0);
+  const incassatoValMese = monthEvaluations.reduce((s, e) => s + incassoValutazione(e), 0);
 
   const yearEvaluations = useMemo(() =>
     evaluations.filter((e) => {
@@ -92,7 +92,7 @@ export default function Report() {
   );
 
   const totalValAnno = yearEvaluations.reduce((s, e) => s + totaleValutazione(e), 0);
-  const incassatoValAnno = yearEvaluations.filter((e) => e.paid).reduce((s, e) => s + totaleValutazione(e), 0);
+  const incassatoValAnno = yearEvaluations.reduce((s, e) => s + incassoValutazione(e), 0);
 
   // Stats per studente nel mese
   const studentStats = useMemo(() =>

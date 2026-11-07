@@ -41,7 +41,8 @@ export function buildClientReport(student, lessons, opts = {}) {
         note: l.note ?? "",
       };
     })
-    .sort((a, b) => a.date - b.date);
+    // Dal più recente al più vecchio
+    .sort((a, b) => b.date - a.date);
 
   const total = righe.reduce((s, r) => s + r.importo, 0);
   const incassato = righe.filter((r) => r.paid).reduce((s, r) => s + r.importo, 0);

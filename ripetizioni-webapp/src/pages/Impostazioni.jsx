@@ -15,6 +15,9 @@ function TipiValutazione() {
   const [editId, setEditId] = useState(null);
   const [editNome, setEditNome] = useState("");
   const [editPrezzo, setEditPrezzo] = useState("");
+  // Tipo in attesa di conferma quando il prezzo e' cambiato: il salvataggio
+  // vero avviene solo dopo la scelta nel modal (propaga si' / no).
+  const [confermaPrezzo, setConfermaPrezzo] = useState(null);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -32,7 +35,25 @@ function TipiValutazione() {
 
   async function salvaEdit() {
     if (!editNome.trim()) return;
-    await updateEvaluationType({ id: editId, nome: editNome.trim(), prezzo: parseFloat(editPrezzo) || 0 });
+    const nuovoPrezzo = parseFloat(editPrezzo) || 0;
+    const tipoOriginale = evaluationTypes.find((t) => t.id === editId);
+    const prezzoCambiato = tipoOriginale && Number(tipoOriginale.prezzo) !== nuovoPrezzo;
+
+    // Se il prezzo e' cambiato, apro il modal di conferma e aspetto la
+    // scelta: il salvataggio vero avviene in confermaPropagazione.
+    if (prezzoCambiato) {
+      setConfermaPrezzo({ id: editId, nome: editNome.trim(), prezzoPrecedente: tipoOriginale.prezzo, prezzo: nuovoPrezzo });
+      return;
+    }
+
+    await updateEvaluationType({ id: editId, nome: editNome.trim(), prezzo: nuovoPrezzo }, false);
+    setEditId(null);
+  }
+
+  async function confermaPropagazione(propaga) {
+    const dati = confermaPrezzo;
+    setConfermaPrezzo(null);
+    await updateEvaluationType({ id: dati.id, nome: dati.nome, prezzo: dati.prezzo }, propaga);
     setEditId(null);
   }
 
@@ -133,6 +154,36 @@ function TipiValutazione() {
           <Plus size={16} /> Aggiungi
         </button>
       </form>
+
+      {/* Conferma prezzo: chiusura senza scegliere = non salva nulla,
+          la riga resta in modifica. */}
+      {confermaPrezzo && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setConfermaPrezzo(null)}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-4)" }}>
+              <h2 style={{ fontWeight: 700, fontSize: "var(--text-lg)" }}>Prezzo cambiato</h2>
+              <button className="btn btn-ghost btn-icon" onClick={() => setConfermaPrezzo(null)} aria-label="Chiudi">✕</button>
+            </div>
+
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "var(--space-2)" }}>
+              Hai cambiato il prezzo di <strong style={{ color: "var(--color-text)" }}>{confermaPrezzo.nome}</strong>: da{" "}
+              {formatEuro(confermaPrezzo.prezzoPrecedente)} a {formatEuro(confermaPrezzo.prezzo)}.
+            </p>
+            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "var(--space-5)" }}>
+              Vuoi applicarlo anche alle schede valutazione già create con questa voce, o solo a quelle future?
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+              <button type="button" className="btn btn-primary" onClick={() => confermaPropagazione(true)}>
+                Aggiorna anche le schede già create
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => confermaPropagazione(false)}>
+                Solo da ora in poi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -244,7 +295,7 @@ export default function Impostazioni() {
           display: "flex", justifyContent: "space-between",
         }}>
           <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)" }}>Totale lezione</span>
-          <span style={{ fontWeight: 700, color: "var(--color-primary)" }}>€25.00</span>
+          <span style={{ fontWeight: 700, color: "var(--color-primary)" }}>{formatEuro(25)}</span>
         </div>
       </div>
 

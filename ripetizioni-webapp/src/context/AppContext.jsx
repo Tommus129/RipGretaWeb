@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  query, orderBy, where, writeBatch, Timestamp, getDocs
+  query, orderBy, where, writeBatch, Timestamp, getDocs, doc
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { db, auth } from "../firebase/config";
-import { totaleValutazione } from "../utils/helpers";
+import { totaleValutazione, vocePagata, incassoValutazione, chiaveVoce } from "../utils/helpers";
 
 const AppContext = createContext();
 
@@ -14,6 +14,7 @@ export function AppProvider({ children }) {
   const [students, setStudents] = useState([]);
   const [evaluations, setEvaluations] = useState([]);
   const [evaluationTypes, setEvaluationTypes] = useState([]);
+  const [evaluationCredits, setEvaluationCredits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -72,6 +73,15 @@ export function AppProvider({ children }) {
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map((d) => ({ docId: d.id, ...d.data() }));
       setEvaluations(data);
+    });
+    return unsub;
+  }, [user]);
+
+  // Credito residuo per persona (pagamenti eccedenti le valutazioni)
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, "evaluationCredits"), (snap) => {
+      setEvaluationCredits(snap.docs.map((d) => ({ docId: d.id, ...d.data() })));
     });
     return unsub;
   }, [user]);
@@ -180,14 +190,34 @@ export function AppProvider({ children }) {
     });
   }
 
-  async function updateEvaluationType(tipo) {
+  // Se propagaPrezzo e' true, il nuovo prezzo viene applicato anche a tutte
+  // le schede valutazione gia' create che usano questa voce (retroattivo).
+  async function updateEvaluationType(tipo, propagaPrezzo = false) {
     const q = query(collection(db, "evaluationTypes"), where("id", "==", tipo.id));
     const snap = await getDocs(q);
     if (snap.empty) return;
+    const nuovoPrezzo = Number(tipo.prezzo) || 0;
     await updateDoc(snap.docs[0].ref, {
       nome: tipo.nome,
-      prezzo: Number(tipo.prezzo) || 0,
+      prezzo: nuovoPrezzo,
     });
+
+    if (propagaPrezzo) {
+      const evalSnap = await getDocs(collection(db, "evaluations"));
+      const daAggiornare = evalSnap.docs.filter((d) =>
+        (d.data().voci ?? []).some((v) => v.typeId === tipo.id)
+      );
+      if (daAggiornare.length > 0) {
+        const batch = writeBatch(db);
+        daAggiornare.forEach((d) => {
+          const voci = (d.data().voci ?? []).map((v) =>
+            v.typeId === tipo.id ? { ...v, prezzo: nuovoPrezzo } : v
+          );
+          batch.update(d.ref, { voci });
+        });
+        await batch.commit();
+      }
+    }
   }
 
   // Le schede gia' salvate non vengono toccate: conservano nome e prezzo
@@ -205,31 +235,82 @@ export function AppProvider({ children }) {
       typeId: v.typeId ?? "",
       nome: v.nome ?? "",
       prezzo: Number(v.prezzo) || 0,
+      paid: !!v.paid,
     }));
   }
 
+  // La scheda risulta pagata solo se lo sono tutti i suoi test
+  function tutteVociPagate(voci) {
+    return voci.length > 0 && voci.every((v) => v.paid);
+  }
+
+  // Credito unico (non legato a una persona): quanto incassato in piu'
+  // rispetto alle valutazioni coperte, usato per le prossime schede.
+  const creditoRef = doc(db, "evaluationCredits", "generale");
+  const creditoGenerale = evaluationCredits.find((c) => c.docId === "generale")?.credito ?? 0;
+
+  // Se il credito copre per intero la nuova scheda, la segna pagata e
+  // scala il credito; altrimenti il credito resta intatto.
   async function addEvaluation(valutazione) {
-    await addDoc(collection(db, "evaluations"), {
+    const voci = normalizzaVoci(valutazione.voci);
+    const totale = totaleValutazione({ voci });
+    const copertaDaCredito = totale > 0 && creditoGenerale >= totale;
+    const vociFinali = copertaDaCredito ? voci.map((v) => ({ ...v, paid: true })) : voci;
+
+    const batch = writeBatch(db);
+    batch.set(doc(collection(db, "evaluations")), {
       id: crypto.randomUUID(),
       nome: valutazione.nome,
       cognome: valutazione.cognome,
       date: Timestamp.fromDate(new Date(valutazione.date)),
-      voci: normalizzaVoci(valutazione.voci),
-      paid: valutazione.paid ?? false,
+      voci: vociFinali,
+      paid: tutteVociPagate(vociFinali),
       note: valutazione.note ?? "",
     });
+    if (copertaDaCredito) {
+      batch.set(creditoRef, { credito: Math.round((creditoGenerale - totale) * 100) / 100 });
+    }
+    await batch.commit();
+    return copertaDaCredito;
+  }
+
+  // Registra un pagamento sui singoli test (chiavi chiaveVoce). I test non
+  // scelti restano come erano; il resto del pagamento va a credito.
+  async function registraPagamento({ importo, chiavi }) {
+    const scelte = new Set(chiavi);
+    const coperto = evaluations.reduce(
+      (s, e) => s + (e.voci ?? []).reduce(
+        (t, v, i) => t + (scelte.has(chiaveVoce(e.id, i)) ? Number(v.prezzo) || 0 : 0), 0),
+      0
+    );
+    const nuovoCredito = Math.round((creditoGenerale + importo - coperto) * 100) / 100;
+
+    const snap = await getDocs(collection(db, "evaluations"));
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      if (!(data.voci ?? []).some((_, i) => scelte.has(chiaveVoce(data.id, i)))) return;
+      const voci = (data.voci ?? []).map((v, i) => ({
+        ...v,
+        paid: vocePagata(data, v) || scelte.has(chiaveVoce(data.id, i)),
+      }));
+      batch.update(d.ref, { voci, paid: tutteVociPagate(voci) });
+    });
+    batch.set(creditoRef, { credito: nuovoCredito });
+    await batch.commit();
   }
 
   async function updateEvaluation(valutazione) {
     const q = query(collection(db, "evaluations"), where("id", "==", valutazione.id));
     const snap = await getDocs(q);
     if (snap.empty) return;
+    const voci = normalizzaVoci(valutazione.voci);
     await updateDoc(snap.docs[0].ref, {
       nome: valutazione.nome,
       cognome: valutazione.cognome,
       date: Timestamp.fromDate(new Date(valutazione.date)),
-      voci: normalizzaVoci(valutazione.voci),
-      paid: valutazione.paid,
+      voci,
+      paid: tutteVociPagate(voci),
       note: valutazione.note ?? "",
     });
   }
@@ -243,7 +324,11 @@ export function AppProvider({ children }) {
   async function toggleEvaluationPaid(valutazione) {
     const q = query(collection(db, "evaluations"), where("id", "==", valutazione.id));
     const snap = await getDocs(q);
-    if (!snap.empty) await updateDoc(snap.docs[0].ref, { paid: !valutazione.paid });
+    if (snap.empty) return;
+    // Segna o annulla tutti i test della scheda in una volta
+    const nuovo = !valutazione.paid;
+    const voci = (valutazione.voci ?? []).map((v) => ({ ...v, paid: nuovo }));
+    await updateDoc(snap.docs[0].ref, { voci, paid: nuovo && voci.length > 0 });
   }
 
   // ─── STATS ─────────────────────────────────────────────────
@@ -288,7 +373,7 @@ export function AppProvider({ children }) {
   // Stats valutazioni: il "totale" e' la somma delle voci flaggate.
   function getEvalStatsForPeriod(evalList) {
     const total = evalList.reduce((s, e) => s + totaleValutazione(e), 0);
-    const incassato = evalList.filter((e) => e.paid).reduce((s, e) => s + totaleValutazione(e), 0);
+    const incassato = evalList.reduce((s, e) => s + incassoValutazione(e), 0);
     return { total, incassato, daIncassare: total - incassato, numSchede: evalList.length };
   }
 
@@ -319,7 +404,7 @@ export function AppProvider({ children }) {
       // Auth
       user, authLoading, logout,
       // Dati
-      lessons, students, evaluations, evaluationTypes, loading,
+      lessons, students, evaluations, evaluationTypes, evaluationCredits, loading,
       // Lezioni
       addLesson, updateLesson, deleteLesson, togglePaid,
       // Studenti
@@ -328,6 +413,7 @@ export function AppProvider({ children }) {
       addEvaluationType, updateEvaluationType, deleteEvaluationType,
       // Schede valutazione
       addEvaluation, updateEvaluation, deleteEvaluation, toggleEvaluationPaid,
+      registraPagamento, creditoGenerale,
       // Stats
       getWeeklyStats, getMonthlyStats, getStudentStats,
       getWeeklyEvaluationStats, getMonthlyEvaluationStats,
